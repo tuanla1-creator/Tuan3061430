@@ -132,6 +132,30 @@ def create_survey(customer_id, customer_name, phone=None, zalo_user_id=None, con
         return r.json()[0]
 
 
+def log_open_send():
+    """Ghi nhan 1 lan nguoi dung bam 'da gui' link khao sat dung chung ra ngoai (Zalo, tin nhan...)
+    - THEM 2026-08-29 theo yeu cau nguoi dung "co cach nao biet toi da gui bao nhieu link khong".
+    Viec dan link vao Zalo la HANH DONG THU CONG ben ngoai he thong nen KHONG THE tu dong dem duoc
+    - day la giai phap thay the: nguoi dung TU bam 1 nut moi lan gui (xem khao-sat-cskh-dark.html),
+    tao 1 ban ghi 'pending' danh dau (KHONG co scores, KHONG hien trong bang phan hoi/danh sach diem
+    thap vi cac cho do deu loc status=='completed'), nhung VAN duoc summary() dem vao total_sent
+    (dem theo created_at, khong loc status) -> tu do tinh duoc response_rate = so nguoi da dien /
+    so lan da bam gui, dung y nghia "ty le phan hoi" that su."""
+    payload = {
+        "token": secrets.token_urlsafe(16),
+        "customer_id": None,
+        "customer_name": None,
+        "phone": None,
+        "zalo_user_id": None,
+        "context_label": "open-link-sent-marker",
+        "status": "pending",
+    }
+    with _client() as c:
+        r = c.post(f"/{TABLE}", json=payload, headers={"Prefer": "return=representation"})
+        _raise_for_status(r)
+        return r.json()[0]
+
+
 def get_survey(token):
     with _client() as c:
         r = c.get(f"/{TABLE}", params={"token": f"eq.{token}", "limit": 1})

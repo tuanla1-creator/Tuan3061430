@@ -91,6 +91,20 @@ def csat_survey_open_submit(body: CsatSurveySubmit):
     return {"status": "ok", "survey": record}
 
 
+@app.post("/csat/survey-open/log-send")
+def csat_survey_open_log_send():
+    """Nguoi dung tu bam '+1 lan gui' moi khi copy link dan vao Zalo gui khach - xem
+    csat_survey.log_open_send() de biet vi sao khong the tu dong dem (viec dan link la thao tac
+    thu cong ben ngoai he thong)."""
+    try:
+        record = csat_survey.log_open_send()
+    except csat_survey.StorageNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except csat_survey.StorageError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"status": "ok", "survey": record}
+
+
 @app.get("/csat/summary")
 def csat_summary(start: str | None = None, end: str | None = None):
     """Thong ke hieu qua dich vu (ty le phan hoi, diem trung binh tung tieu chi, xu huong theo
