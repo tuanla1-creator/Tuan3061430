@@ -339,6 +339,45 @@ def summary(start=None, end=None):
         crit_rows.sort(key=lambda x: (x["count"], x["last_seen"] or ""), reverse=True)
         reasons_by_criterion[key] = crit_rows
 
+    # Xep hang 5 tieu chi tu THAP -> CAO (2026-08-29, yeu cau nguoi dung "trong 5 tieu chi, dau
+    # la tieu chi co so diem thap nhat, xep hang giup toi") - KPI "Tieu chi thap nhat" cu chi hien
+    # 1 tieu chi, day la BANG XEP HANG DAY DU ca 5. avg=None (chua co du lieu) luon xep CUOI, khong
+    # coi la "thap nhat" (khong bia so 0 cho tieu chi chua ai cham).
+    criteria_ranking = []
+    for c in CRITERIA:
+        key = c["key"]
+        avg = avg_by_criterion.get(key)
+        count_low = sum(
+            1 for r in completed_in_range
+            if r.get("scores") and r["scores"].get(key) is not None and r["scores"][key] <= 3
+        )
+        criteria_ranking.append({
+            "key": key, "label": c["label"], "avg": avg, "count_low": count_low,
+        })
+    criteria_ranking.sort(key=lambda x: (x["avg"] is None, x["avg"] if x["avg"] is not None else 0))
+    best_avg = next((x["avg"] for x in criteria_ranking if x["avg"] is not None), None)
+    for i, x in enumerate(criteria_ranking):
+        x["rank"] = i + 1
+        x["gap_from_best"] = round(best_avg - x["avg"], 2) if (best_avg is not None and x["avg"] is not None) else None
+
+    # Thong ke "van de khach hang gap phai nhieu nhat" - GOM tat ca ly do tu reasons_by_criterion
+    # (da co san, tach theo tung tieu chi) THANH 1 danh sach chung, sap theo so lan nhac toi nhieu
+    # nhat truoc (2026-08-29, yeu cau nguoi dung "phan tich thong ke noi dung nhung van de ma khach
+    # thuong xuyen gap phai nhat") - van GOM theo CHUOI TRUNG KHOP TUYET DOI nhu reasons_by_criterion,
+    # khong bia them "phan loai chu de" bang NLP khong co that trong du an nay.
+    top_issues = []
+    for c in CRITERIA:
+        for row in reasons_by_criterion.get(c["key"], []):
+            top_issues.append({
+                "criterion_key": c["key"], "criterion_label": c["label"],
+                "text": row["text"], "count": row["count"],
+                "avg_score": row["avg_score"], "last_seen": row["last_seen"],
+            })
+    top_issues.sort(key=lambda x: (x["count"], x["last_seen"] or ""), reverse=True)
+    top_issues = top_issues[:10]
+
+    ai_insights = _generate_insights(criteria_ranking, top_issues, avg_overall, total_completed)
+
     return {
         "status": "ok",
         "criteria": CRITERIA,
@@ -351,4 +390,63 @@ def summary(start=None, end=None):
         "trend": trend,
         "low_score": low_score[:20],
         "recent": recent,
+        "criteria_ranking": criteria_ranking,
+        "top_issues": top_issues,
+        "ai_insights": ai_insights,
     }
+
+
+# Nguong so luong phan hoi toi thieu de dua ra nhan dinh - duoi muc nay, 1-2 phieu le co the keo
+# lech trung binh rat nhieu, "nhan dinh" luc do chi la nhieu, khong co y nghia thong ke.
+_MIN_SAMPLE_FOR_INSIGHT = 5
+
+# Goi y giai phap RULE-BASED theo tung tieu chi (2026-08-29, yeu cau nguoi dung "AI insight dua ra
+# giai phap") - CHON rule-based thay vi goi API LLM that: du an chua co ANTHROPIC_API_KEY/
+# OPENAI_API_KEY o dau ca (services/csat-public deploy tren Render free tier, khong muon them chi
+# phi/API key/goi mang cho 1 tinh nang thong ke), va giu dung tinh than "khong bia du lieu" xuyen
+# suot file nay (vd reasons_by_criterion o tren). Moi cau goi y o day CO DIEU KIEN, luon gan voi so
+# lieu that (diem, so luot cham thap, noi dung gop y that) chu khong phai van ban chung chung khong
+# lien quan du lieu.
+_ACTION_MAP = {
+    "chat_luong_dich_vu": "Rà soát lại quy trình giao nhận, đối chiếu thời gian/tình trạng hàng thực tế so với cam kết ở các đơn liên quan đến những phản hồi điểm thấp.",
+    "nhan_vien_ho_tro": "Đào tạo lại kỹ năng trao đổi qua Zalo (thái độ, tốc độ phản hồi) cho nhân viên hỗ trợ, ưu tiên rà soát các ca có điểm thấp gần đây.",
+    "cskh": "Xem xét rút ngắn thời gian phản hồi CSKH và kiểm tra lại quy trình có giải quyết đúng vấn đề khách nêu hay không.",
+    "uu_dai": "Rà soát, làm mới chương trình ưu đãi hiện tại; có thể khảo sát thêm nhu cầu cụ thể của nhóm khách đang chấm điểm thấp.",
+    "giao_dien_app_web": "Kiểm tra lại trải nghiệm app/web ở các bước khách hay gặp khó, đối chiếu trực tiếp với nội dung góp ý bên dưới.",
+}
+
+
+def _generate_insights(criteria_ranking, top_issues, avg_overall, total_completed):
+    if total_completed < _MIN_SAMPLE_FOR_INSIGHT:
+        return [{
+            "severity": "info", "criterion_key": None, "criterion_label": None,
+            "title": "Chưa đủ dữ liệu để đưa ra nhận định",
+            "detail": f"Kỳ này mới có {total_completed} phản hồi — cần tối thiểu {_MIN_SAMPLE_FOR_INSIGHT} phản hồi để thống kê có ý nghĩa, tránh kết luận vội trên vài phiếu lẻ. Nhận định sẽ tự cập nhật khi có thêm dữ liệu.",
+            "suggestion": None,
+        }]
+
+    insights = []
+    worst_candidates = [c for c in criteria_ranking if c["avg"] is not None and c["avg"] < 4][:2]
+    for c in worst_candidates:
+        severity = "high" if c["avg"] < 3 else "medium"
+        related = [i for i in top_issues if i["criterion_key"] == c["key"]][:2]
+        evidence = [f"Điểm trung bình {c['avg']:.1f}/5" + (" — thấp nhất trong 5 tiêu chí" if c["rank"] == 1 else "")]
+        if c["count_low"]:
+            evidence.append(f"{c['count_low']} phản hồi chấm ≤3 sao ở tiêu chí này")
+        if related:
+            evidence.append("góp ý nhắc nhiều nhất: " + "; ".join(f"\"{i['text']}\" (×{i['count']})" for i in related))
+        insights.append({
+            "severity": severity, "criterion_key": c["key"], "criterion_label": c["label"],
+            "title": f"{c['label']} đang là điểm yếu nhất" if c["rank"] == 1 else f"{c['label']} cũng cần lưu ý",
+            "detail": " · ".join(evidence),
+            "suggestion": _ACTION_MAP.get(c["key"]),
+        })
+
+    if not insights:
+        insights.append({
+            "severity": "positive", "criterion_key": None, "criterion_label": None,
+            "title": "Chưa phát hiện điểm yếu rõ rệt",
+            "detail": f"Cả 5 tiêu chí đều đạt trung bình ≥4/5 trong kỳ này (điểm tổng {avg_overall}/5).",
+            "suggestion": "Tiếp tục duy trì chất lượng hiện tại, theo dõi thêm ở kỳ tiếp theo.",
+        })
+    return insights
