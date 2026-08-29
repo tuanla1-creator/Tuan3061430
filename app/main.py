@@ -110,21 +110,6 @@ def csat_survey_open_log_send(body: CsatLogSend = CsatLogSend()):
     return {"status": "ok", "count": len(records)}
 
 
-@app.delete("/csat/_debug/purge-markers")
-def csat_purge_test_markers():
-    """TAM THOI - dung de don du lieu test cua chinh Claude luc phat trien tinh nang log-send
-    (khong phai thao tac cua nguoi dung). Xoa het cac ban ghi 'open-link-sent-marker' (khong dung
-    KHONG cham vao cac phan hoi that status='completed'). XOA endpoint nay sau khi don xong,
-    khong de lai trong production."""
-    try:
-        deleted = csat_survey.purge_open_send_markers()
-    except csat_survey.StorageNotConfigured as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    except csat_survey.StorageError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    return {"status": "ok", "deleted": deleted}
-
-
 @app.get("/csat/summary")
 def csat_summary(start: str | None = None, end: str | None = None):
     """Thong ke hieu qua dich vu (ty le phan hoi, diem trung binh tung tieu chi, xu huong theo
