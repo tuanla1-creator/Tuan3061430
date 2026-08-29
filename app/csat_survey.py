@@ -166,6 +166,17 @@ def log_open_send(count=1):
         return r.json()
 
 
+def purge_open_send_markers():
+    """TAM THOI - xoa toan bo ban ghi 'open-link-sent-marker' (danh dau 'da gui', KHONG phai
+    phan hoi that cua khach - status luon 'pending', khong co scores). Dung 1 lan de don du lieu
+    test cua Claude khi phat trien tinh nang log_open_send()/log-send, KHONG xoa bat ky phan hoi
+    completed nao. Xoa endpoint + ham nay sau khi don xong, khong de lai trong production."""
+    with _client() as c:
+        r = c.delete(f"/{TABLE}", params={"context_label": "eq.open-link-sent-marker"}, headers={"Prefer": "return=representation"})
+        _raise_for_status(r)
+        return len(r.json())
+
+
 def get_survey(token):
     with _client() as c:
         r = c.get(f"/{TABLE}", params={"token": f"eq.{token}", "limit": 1})
