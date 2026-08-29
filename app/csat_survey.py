@@ -148,8 +148,9 @@ def log_open_send(count=1):
     tu nhap so nguoi THAT SU da nhan duoc link trong dot gui do, tao dung tung ay ban ghi danh dau
     trong 1 lan goi Supabase (bulk insert qua PostgREST - gui 1 mang thay vi 1 object)."""
     count = max(1, min(int(count), 5000))  # chan hop ly, tranh nhap nham 1 so khong lo
-    payload = [
-        {
+
+    def _marker():
+        return {
             "token": secrets.token_urlsafe(16),
             "customer_id": None,
             "customer_name": None,
@@ -158,12 +159,29 @@ def log_open_send(count=1):
             "context_label": "open-link-sent-marker",
             "status": "pending",
         }
-        for _ in range(count)
-    ]
+
+    # Gui thanh nhieu lo NHO (<=50/lo) thay vi 1 mang lon duy nhat - da THAY THUC TE mot lan gui
+    # count=100 chi tao ra ~35 ban ghi (khong ro nguyen nhan chinh xac - co the do gioi han/timeout
+    # phia Supabase free tier khi POST 1 mang lon), trong khi lo 10 thi luon dung du. Chia lo nho
+    # giam rui ro mat ban ghi giua chung khi nguoi dung nhap so lon (vd gui hang loat cho 100+
+    # khach qua forward Zalo).
+    CHUNK = 50
+    inserted = []
     with _client() as c:
-        r = c.post(f"/{TABLE}", json=payload, headers={"Prefer": "return=representation"})
-        _raise_for_status(r)
-        return r.json()
+        remaining = count
+        while remaining > 0:
+            batch_size = min(CHUNK, remaining)
+            payload = [_marker() for _ in range(batch_size)]
+            r = c.post(f"/{TABLE}", json=payload, headers={"Prefer": "return=representation"})
+            _raise_for_status(r)
+            rows = r.json()
+            if len(rows) != batch_size:
+                raise StorageError(
+                    f"Supabase chỉ nhận {len(rows)}/{batch_size} bản ghi trong 1 lô — dữ liệu có thể chưa đầy đủ, thử lại với số nhỏ hơn."
+                )
+            inserted.extend(rows)
+            remaining -= batch_size
+    return inserted
 
 
 def purge_open_send_markers():
