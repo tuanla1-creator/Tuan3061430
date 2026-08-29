@@ -89,9 +89,9 @@ def render_survey_page(record):
     customer_name = record.get("customer_name") or "bạn"
     hero = f"""
 <div class="hero">
-  <div class="logo">GHN · Chăm sóc khách hàng</div>
-  <h1>Chào {_esc(customer_name)}, bạn đánh giá dịch vụ CSKH qua Zalo thế nào?</h1>
-  <p>Mỗi lượt đánh giá đều giúp chúng tôi phục vụ bạn tốt hơn. Chỉ mất khoảng 30 giây.</p>
+  <div class="logo">GHN · Khảo sát chất lượng dịch vụ</div>
+  <h1>Cảm ơn {_esc(customer_name)} đã tin tưởng GHN!</h1>
+  <p>Chúng tôi luôn mong muốn mang đến trải nghiệm tốt nhất. Dành khoảng 30 giây chia sẻ cảm nhận của bạn về dịch vụ chăm sóc khách hàng qua Zalo nhé.</p>
 </div>"""
 
     if record["status"] == "completed":
@@ -229,9 +229,9 @@ def render_open_survey_page():
     nop qua POST /csat/survey-open/submit (xem csat_survey.add_open_response())."""
     hero = """
 <div class="hero">
-  <div class="logo">GHN · Chăm sóc khách hàng</div>
-  <h1>Bạn thấy dịch vụ CSKH qua Zalo của GHN thế nào?</h1>
-  <p>5 câu hỏi ngắn, khoảng 30 giây — góp ý của bạn giúp chúng tôi phục vụ tốt hơn.</p>
+  <div class="logo">GHN · Khảo sát chất lượng dịch vụ</div>
+  <h1>Cảm ơn bạn đã tin tưởng GHN!</h1>
+  <p>Chúng tôi luôn mong muốn mang đến trải nghiệm tốt nhất. Dành khoảng 30 giây chia sẻ cảm nhận của bạn về dịch vụ chăm sóc khách hàng qua Zalo nhé.</p>
 </div>"""
 
     crit_blocks = []
