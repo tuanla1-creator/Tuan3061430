@@ -125,13 +125,16 @@ def get_survey(token):
     return _load()["surveys"].get(token)
 
 
-def add_open_response(scores, comment, reasons=None):
+def add_open_response(scores, comment, reasons=None, customer_name=None, phone=None):
     """THEM 2026-08-29: khac voi create_survey()+submit_survey() (1 token = 1 khach, dung 1
     lan roi khoa lai "da danh gia") - ham nay phuc vu 1 LINK DUNG CHUNG gui cho TAT CA khach
     (nguoi dung yeu cau "chi can gui link khao sat cho khach, khach nao dien thi thong ke tra
     ve"), ai bam vao cung thay form trong, cung nop duoc, khong bi chan boi trang thai
     "da hoan thanh" cua nguoi truoc. Validate diem giong het submit_survey(), chi khac la
     KHONG can token/pending truoc - tao thang 1 ban ghi 'completed' hoan chinh.
+    customer_name/phone: THEM sau (nguoi dung yeu cau "cho thêm mục nhập tên và sdt") - ca 2
+    deu KHONG bat buoc (link dung chung khong the ep khach phai dien danh tinh), rong thi
+    dung placeholder "Khach qua link khao sat" nhu truoc day.
     Xem GET/POST /csat/survey-open trong main.py."""
     missing = [k for k in CRITERIA_KEYS if k not in scores]
     if missing:
@@ -149,11 +152,13 @@ def add_open_response(scores, comment, reasons=None):
                 clean_reasons[k] = text.strip()[:500]
 
     now = _now_iso()
+    clean_name = (customer_name or "").strip()[:120]
+    clean_phone = (phone or "").strip()[:30]
     record = {
         "token": secrets.token_urlsafe(16),
         "customer_id": None,
-        "customer_name": "Khách qua link khảo sát",
-        "phone": None,
+        "customer_name": clean_name or "Khách qua link khảo sát",
+        "phone": clean_phone or None,
         "zalo_user_id": None,
         "context_label": "open-link",  # danh dau nguon: tu link dung chung, khong phai tu 1 luot gui rieng
         "created_at": now,

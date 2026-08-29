@@ -49,8 +49,13 @@ body{{min-height:100vh; display:flex; justify-content:center; padding:0 0 40px;}
 .crit.rated .crit-label::after{{content:" ✓"; color:var(--good); font-weight:800;}}
 .comment-block{{padding-top:16px;}}
 .comment-block label{{font-size:14.5px; font-weight:700; display:block; margin-bottom:8px;}}
-textarea{{width:100%; min-height:88px; border-radius:10px; border:1px solid var(--border); padding:10px 12px; font:inherit; font-size:13.5px; resize:vertical; color:var(--ink); background:#FAFBFC;}}
-textarea:focus{{outline:none; border-color:var(--orange);}}
+textarea, input[type="text"], input[type="tel"]{{width:100%; border-radius:10px; border:1px solid var(--border); padding:10px 12px; font:inherit; font-size:13.5px; color:var(--ink); background:#FAFBFC; box-sizing:border-box;}}
+textarea{{min-height:88px; resize:vertical;}}
+textarea:focus, input[type="text"]:focus, input[type="tel"]:focus{{outline:none; border-color:var(--orange);}}
+.contact-block{{padding-bottom:18px; border-bottom:1px solid var(--border); margin-bottom:4px;}}
+.contact-field{{margin-bottom:12px;}}
+.contact-field:last-child{{margin-bottom:0;}}
+.contact-field label{{font-size:12.5px; font-weight:700; color:var(--ink-2); display:block; margin-bottom:6px;}}
 .reason-block{{display:none; margin-top:10px;}}
 .reason-block.show{{display:block;}}
 .reason-block label{{font-size:12.5px; font-weight:700; color:var(--ink-2); display:block; margin-bottom:6px;}}
@@ -251,6 +256,16 @@ def render_open_survey_page():
 
     form_html = f"""
 <div class="card" id="surveyCard">
+  <div class="contact-block">
+    <div class="contact-field">
+      <label for="custName">Họ tên (không bắt buộc)</label>
+      <input type="text" id="custName" maxlength="120" placeholder="Nhập họ tên của bạn">
+    </div>
+    <div class="contact-field">
+      <label for="custPhone">Số điện thoại (không bắt buộc)</label>
+      <input type="tel" id="custPhone" maxlength="20" placeholder="Nhập số điện thoại của bạn">
+    </div>
+  </div>
   {''.join(crit_blocks)}
   <div class="comment-block">
     <label for="comment">Góp ý thêm (không bắt buộc)</label>
@@ -310,7 +325,13 @@ def render_open_survey_page():
     fetch('/csat/survey-open/submit', {{
       method: 'POST',
       headers: {{'Content-Type': 'application/json'}},
-      body: JSON.stringify({{ scores: scores, comment: document.getElementById('comment').value, reasons: reasons }})
+      body: JSON.stringify({{
+        scores: scores,
+        comment: document.getElementById('comment').value,
+        reasons: reasons,
+        customer_name: document.getElementById('custName').value,
+        phone: document.getElementById('custPhone').value
+      }})
     }}).then(function(res){{
       if (!res.ok) return res.json().then(function(e){{ throw new Error(e.detail || 'Có lỗi xảy ra'); }});
       return res.json();

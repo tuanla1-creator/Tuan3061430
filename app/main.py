@@ -71,12 +71,17 @@ class CsatSurveySubmit(BaseModel):
     scores: dict[str, int]
     comment: str | None = None
     reasons: dict[str, str] | None = None
+    customer_name: str | None = None
+    phone: str | None = None
 
 
 @app.post("/csat/survey-open/submit")
 def csat_survey_open_submit(body: CsatSurveySubmit):
     try:
-        record = csat_survey.add_open_response(body.scores, body.comment, reasons=body.reasons)
+        record = csat_survey.add_open_response(
+            body.scores, body.comment, reasons=body.reasons,
+            customer_name=body.customer_name, phone=body.phone,
+        )
     except csat_survey.InvalidScores as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "ok", "survey": record}
