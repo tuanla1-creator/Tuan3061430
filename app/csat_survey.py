@@ -132,28 +132,38 @@ def create_survey(customer_id, customer_name, phone=None, zalo_user_id=None, con
         return r.json()[0]
 
 
-def log_open_send():
-    """Ghi nhan 1 lan nguoi dung bam 'da gui' link khao sat dung chung ra ngoai (Zalo, tin nhan...)
-    - THEM 2026-08-29 theo yeu cau nguoi dung "co cach nao biet toi da gui bao nhieu link khong".
+def log_open_send(count=1):
+    """Ghi nhan nguoi dung 'da gui' link khao sat dung chung ra ngoai (Zalo, tin nhan...) -
+    THEM 2026-08-29 theo yeu cau nguoi dung "co cach nao biet toi da gui bao nhieu link khong".
     Viec dan link vao Zalo la HANH DONG THU CONG ben ngoai he thong nen KHONG THE tu dong dem duoc
-    - day la giai phap thay the: nguoi dung TU bam 1 nut moi lan gui (xem khao-sat-cskh-dark.html),
-    tao 1 ban ghi 'pending' danh dau (KHONG co scores, KHONG hien trong bang phan hoi/danh sach diem
-    thap vi cac cho do deu loc status=='completed'), nhung VAN duoc summary() dem vao total_sent
-    (dem theo created_at, khong loc status) -> tu do tinh duoc response_rate = so nguoi da dien /
-    so lan da bam gui, dung y nghia "ty le phan hoi" that su."""
-    payload = {
-        "token": secrets.token_urlsafe(16),
-        "customer_id": None,
-        "customer_name": None,
-        "phone": None,
-        "zalo_user_id": None,
-        "context_label": "open-link-sent-marker",
-        "status": "pending",
-    }
+    - day la giai phap thay the: nguoi dung tu bam nut ghi nhan sau moi dot gui (xem
+    khao-sat-cskh-dark.html), tao (count) ban ghi 'pending' danh dau (KHONG co scores, KHONG hien
+    trong bang phan hoi/danh sach diem thap vi cac cho do deu loc status=='completed'), nhung VAN
+    duoc summary() dem vao total_sent (dem theo created_at, khong loc status) -> tu do tinh duoc
+    response_rate = so nguoi da dien / so lan da bam gui, dung y nghia "ty le phan hoi" that su.
+
+    count: THEM 2026-08-29 sau phan hoi nguoi dung "tôi vừa gửi 100 khách, do share người này qua
+    người khác, chỉ copy 1 lần thôi" - 1 lan COPY link co the duoc CHUYEN TIEP toi nhieu nguoi
+    (forward qua Zalo), nen khong the gia dinh "1 lan bam nut = 1 nguoi nhan". Cho phep nguoi dung
+    tu nhap so nguoi THAT SU da nhan duoc link trong dot gui do, tao dung tung ay ban ghi danh dau
+    trong 1 lan goi Supabase (bulk insert qua PostgREST - gui 1 mang thay vi 1 object)."""
+    count = max(1, min(int(count), 5000))  # chan hop ly, tranh nhap nham 1 so khong lo
+    payload = [
+        {
+            "token": secrets.token_urlsafe(16),
+            "customer_id": None,
+            "customer_name": None,
+            "phone": None,
+            "zalo_user_id": None,
+            "context_label": "open-link-sent-marker",
+            "status": "pending",
+        }
+        for _ in range(count)
+    ]
     with _client() as c:
         r = c.post(f"/{TABLE}", json=payload, headers={"Prefer": "return=representation"})
         _raise_for_status(r)
-        return r.json()[0]
+        return r.json()
 
 
 def get_survey(token):

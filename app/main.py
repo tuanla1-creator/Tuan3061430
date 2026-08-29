@@ -91,18 +91,23 @@ def csat_survey_open_submit(body: CsatSurveySubmit):
     return {"status": "ok", "survey": record}
 
 
+class CsatLogSend(BaseModel):
+    count: int = 1  # so NGUOI THAT SU da nhan link trong dot gui nay (1 lan copy co the forward toi nhieu nguoi)
+
+
 @app.post("/csat/survey-open/log-send")
-def csat_survey_open_log_send():
-    """Nguoi dung tu bam '+1 lan gui' moi khi copy link dan vao Zalo gui khach - xem
+def csat_survey_open_log_send(body: CsatLogSend = CsatLogSend()):
+    """Nguoi dung tu ghi nhan da gui link cho (count) nguoi trong 1 dot - xem
     csat_survey.log_open_send() de biet vi sao khong the tu dong dem (viec dan link la thao tac
-    thu cong ben ngoai he thong)."""
+    thu cong ben ngoai he thong) va vi sao co tham so count (1 lan copy co the forward toi
+    nhieu nguoi)."""
     try:
-        record = csat_survey.log_open_send()
+        records = csat_survey.log_open_send(count=body.count)
     except csat_survey.StorageNotConfigured as e:
         raise HTTPException(status_code=503, detail=str(e))
     except csat_survey.StorageError as e:
         raise HTTPException(status_code=502, detail=str(e))
-    return {"status": "ok", "survey": record}
+    return {"status": "ok", "count": len(records)}
 
 
 @app.get("/csat/summary")
