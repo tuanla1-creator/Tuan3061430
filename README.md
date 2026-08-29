@@ -42,3 +42,4 @@ khảo sát quan trọng và cần đảm bảo không bao giờ mất, nên nâ
 
 Lần đầu ai đó mở link sau một thời gian dài không ai vào, trang có thể mất ~30-60 giây để tải
 (Render đánh thức service). Các lần sau trong cùng phiên hoạt động sẽ nhanh bình thường.
+
