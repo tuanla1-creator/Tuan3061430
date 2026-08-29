@@ -10,12 +10,12 @@ telesale_client, pitel_client, cohort*, f_buckets*, scheduler, reactivation, rep
 nay KHONG can bat ky secret/API key GHN noi bo nao ca, an toan de dua len 1 host cong khai mien
 phi ma khong lo lo bat cu credential nao.
 
-LUU Y VE DO BEN DU LIEU: file JSON o data/csat_surveys.json la luu tru DUY NHAT (xem
-csat_survey.py) - tren cac nen cloud free tier dung "ephemeral disk" (vd Render free web
-service), du lieu nay CO THE MAT khi service redeploy (mac du thuong con nguyen qua cac lan
-"spin down do het hoat dong" - chua kiem chung chac chan). Neu can dam bao khong bao gio mat du
-lieu that, nen nang cap len persistent disk (Render) hoac chuyen luu tru sang 1 database ben
-ngoai - CHUA lam trong ban nay theo dung pham vi yeu cau."""
+LUU Y VE DO BEN DU LIEU (CAP NHAT 2026-08-29): TUNG luu vao file JSON o data/csat_surveys.json -
+2 phieu khao sat THAT cua nguoi dung da bi MAT do dia ephemeral cua Render free tier bi xoa khi
+service khoi dong lai/redeploy, dung nhu ghi chu cu da canh bao truoc. Da CHUYEN SANG Supabase
+(Postgres qua REST API, xem csat_survey.py) - can dat 2 bien moi truong SUPABASE_URL/SUPABASE_KEY
+tren Render (xem README.md muc "Thiet lap Supabase"). Neu 2 bien nay chua duoc dat, moi endpoint
+lien quan se tra loi 503 ro rang thay vi am tham mat du lieu."""
 
 import os
 
@@ -84,6 +84,10 @@ def csat_survey_open_submit(body: CsatSurveySubmit):
         )
     except csat_survey.InvalidScores as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except csat_survey.StorageNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except csat_survey.StorageError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     return {"status": "ok", "survey": record}
 
 
@@ -91,9 +95,19 @@ def csat_survey_open_submit(body: CsatSurveySubmit):
 def csat_summary(start: str | None = None, end: str | None = None):
     """Thong ke hieu qua dich vu (ty le phan hoi, diem trung binh tung tieu chi, xu huong theo
     ngay, danh sach diem thap can chu y) - dung cho tab "Khảo sát CSKH" trong dashboard CarePilot."""
-    return csat_survey.summary(start=start, end=end)
+    try:
+        return csat_survey.summary(start=start, end=end)
+    except csat_survey.StorageNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except csat_survey.StorageError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 @app.get("/csat/surveys")
 def csat_list_surveys():
-    return {"status": "ok", "surveys": csat_survey.list_surveys()}
+    try:
+        return {"status": "ok", "surveys": csat_survey.list_surveys()}
+    except csat_survey.StorageNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except csat_survey.StorageError as e:
+        raise HTTPException(status_code=502, detail=str(e))

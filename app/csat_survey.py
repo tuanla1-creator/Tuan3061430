@@ -8,24 +8,31 @@ hieu qua dich vu". 5 tieu chi (nguoi dung tu chon khi duoc hoi, khong phai suy d
   5. Giao dien app/web (de tra cuu, de thao tac)
 Moi tieu chi cham 1-5 sao, kem 1 o gop y tu do (khong bat buoc).
 
+**2026-08-29 - DOI LUU TRU tu file JSON tren dia sang Supabase (Postgres qua REST API cua
+PostgREST)**, sau khi phat hien 2 phieu khao sat that cua nguoi dung bi MAT tren Render free tier -
+dung dung nhu README.md da canh bao truoc: dia free tier la ephemeral, mat sach khi service
+redeploy/khoi dong lai. Nguoi dung chon Supabase (mien phi) thay vi nang cap Render len goi tra phi
+co dia ben. Xem README.md muc "Thiet lap Supabase" de biet cach tao bang + lay SUPABASE_URL/
+SUPABASE_KEY. Neu 2 bien moi truong nay CHUA duoc dat, moi ham goi Cong du lieu se raise
+StorageNotConfigured ro rang (khong am tham roi ve file JSON cu nua - da xoa han co che do, tranh
+lap lai dung bay "tuong da luu nhung thuc ra khong" mot lan nua).
+
 KHONG co su kien "dong ticket ho tro" TU DONG trong he thong hien tai (tab "Kenh cho ho tro" -
 frontend/tabs/07-cho-ho-tro - chi la hang doi giam sat, chua co vong doi ticket/trang thai
 resolved) - nen "gui khao sat" o day la HANH DONG THU CONG: agent CSKH tu bam "Gui khao sat" cho
 1 khach (trong tab moi frontend/report/khao-sat-cskh-dark.html) khi ho coi cuoc trao doi da xong,
 thay vi tu dong bam theo 1 event he thong. Xem thread quyet dinh nay trong memory du an
-(project_carepilot_csat_survey).
+(project_carepilot_csat_survey)."""
 
-Luu tru: file JSON atomic, CUNG mau voi customer_notes.py/f_bucket_history.py (khong dung
-SQLite/DB that - dung tinh than "prototype, du lieu mat khi xoa file la binh thuong" cua du an).
-Key la token (chuoi ngau nhien, dung lam URL cong khai KHONG doan duoc de khach bam tu Zalo vao
-thang trang khao sat ma khong can dang nhap)."""
-
-import json
 import os
 import secrets
 from datetime import datetime, timezone
 
-DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "csat_surveys.json")
+import httpx
+
+SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY") or ""
+TABLE = "csat_surveys"
 
 # Thu tu CO Y NGHIA: dung lam thu tu hien thi ca o form khao sat (khach thay) lan o dashboard
 # thong ke (agent thay) - sua nhan/hint o day se doi dong loat ca 2 noi, khong can sua lap.
@@ -71,58 +78,66 @@ class InvalidScores(Exception):
     pass
 
 
+class StorageNotConfigured(Exception):
+    """SUPABASE_URL/SUPABASE_KEY chua duoc dat trong bien moi truong - xem README.md."""
+
+
+class StorageError(Exception):
+    """Supabase tra loi bat thuong (mang loi, sai quyen, bang chua ton tai...) - forward nguyen
+    van thong diep, khong nuot loi im lang (im lang chinh la nguyen nhan lam mat du lieu that
+    truoc do ma khong ai biet cho toi khi kiem tra thu cong)."""
+
+
 def _now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-def _load():
-    path = os.path.normpath(DATA_PATH)
-    if not os.path.exists(path):
-        return {"surveys": {}}
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            data.setdefault("surveys", {})
-            return data
-    except (json.JSONDecodeError, OSError):
-        return {"surveys": {}}  # file hong/rong - coi nhu chua co khao sat nao, khong lam sap trang
+def _client():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise StorageNotConfigured(
+            "Chưa cấu hình SUPABASE_URL/SUPABASE_KEY (biến môi trường trên Render) — xem README.md mục \"Thiết lập Supabase\"."
+        )
+    return httpx.Client(
+        base_url=SUPABASE_URL + "/rest/v1",
+        headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json",
+        },
+        timeout=10,
+    )
 
 
-def _save(data):
-    path = os.path.normpath(DATA_PATH)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp_path = path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
-    os.replace(tmp_path, path)
+def _raise_for_status(r):
+    if r.status_code >= 400:
+        raise StorageError(f"Supabase trả lỗi {r.status_code}: {r.text[:300]}")
 
 
 def create_survey(customer_id, customer_name, phone=None, zalo_user_id=None, context_label=None):
     """Tao 1 khao sat o trang thai 'pending', tra ve record vua tao (co token dung de
-    dung link cong khai /csat/survey/<token>). Ghi atomic ngay."""
+    dung link cong khai /csat/survey/<token>)."""
     token = secrets.token_urlsafe(16)
-    record = {
+    payload = {
         "token": token,
-        "customer_id": customer_id,
+        "customer_id": None if customer_id is None else str(customer_id),
         "customer_name": customer_name,
         "phone": phone,
         "zalo_user_id": zalo_user_id,
         "context_label": context_label or "",
-        "created_at": _now_iso(),
         "status": "pending",
-        "scores": None,
-        "comment": None,
-        "reasons": None,
-        "submitted_at": None,
     }
-    data = _load()
-    data["surveys"][token] = record
-    _save(data)
-    return record
+    with _client() as c:
+        r = c.post(f"/{TABLE}", json=payload, headers={"Prefer": "return=representation"})
+        _raise_for_status(r)
+        return r.json()[0]
 
 
 def get_survey(token):
-    return _load()["surveys"].get(token)
+    with _client() as c:
+        r = c.get(f"/{TABLE}", params={"token": f"eq.{token}", "limit": 1})
+        _raise_for_status(r)
+        rows = r.json()
+        return rows[0] if rows else None
 
 
 def add_open_response(scores, comment, reasons=None, customer_name=None, phone=None):
@@ -132,9 +147,8 @@ def add_open_response(scores, comment, reasons=None, customer_name=None, phone=N
     ve"), ai bam vao cung thay form trong, cung nop duoc, khong bi chan boi trang thai
     "da hoan thanh" cua nguoi truoc. Validate diem giong het submit_survey(), chi khac la
     KHONG can token/pending truoc - tao thang 1 ban ghi 'completed' hoan chinh.
-    customer_name/phone: THEM sau (nguoi dung yeu cau "cho thêm mục nhập tên và sdt") - ca 2
-    deu KHONG bat buoc (link dung chung khong the ep khach phai dien danh tinh), rong thi
-    dung placeholder "Khach qua link khao sat" nhu truoc day.
+    customer_name/phone: ca 2 deu KHONG bat buoc (link dung chung khong the ep khach phai dien
+    danh tinh), rong thi dung placeholder "Khach qua link khao sat".
     Xem GET/POST /csat/survey-open trong main.py."""
     missing = [k for k in CRITERIA_KEYS if k not in scores]
     if missing:
@@ -154,7 +168,7 @@ def add_open_response(scores, comment, reasons=None, customer_name=None, phone=N
     now = _now_iso()
     clean_name = (customer_name or "").strip()[:120]
     clean_phone = (phone or "").strip()[:30]
-    record = {
+    payload = {
         "token": secrets.token_urlsafe(16),
         "customer_id": None,
         "customer_name": clean_name or "Khách qua link khảo sát",
@@ -168,15 +182,14 @@ def add_open_response(scores, comment, reasons=None, customer_name=None, phone=N
         "reasons": clean_reasons or None,
         "submitted_at": now,
     }
-    data = _load()
-    data["surveys"][record["token"]] = record
-    _save(data)
-    return record
+    with _client() as c:
+        r = c.post(f"/{TABLE}", json=payload, headers={"Prefer": "return=representation"})
+        _raise_for_status(r)
+        return r.json()[0]
 
 
 def submit_survey(token, scores, comment, reasons=None):
-    data = _load()
-    record = data["surveys"].get(token)
+    record = get_survey(token)
     if not record:
         raise SurveyNotFound(token)
     if record["status"] == "completed":
@@ -191,31 +204,34 @@ def submit_survey(token, scores, comment, reasons=None):
         if not isinstance(v, int) or not (1 <= v <= 5):
             raise InvalidScores(f"Điểm '{k}' phải là số nguyên 1-5")
 
-    # reasons: {tieu_chi_key: ly_do_text} - THEM 2026-08-28, CHI luu cho tieu chi thuc su <=3 sao
-    # (khong tin tuong nguyen si input tu client - loc lai o day, phong truong hop client gui du
-    # lieu khong khop, vd JS bi sua/goi thang API bo qua UI). Khong bat buoc phai co ly do cho MOI
-    # tieu chi diem thap - khach co the bo trong.
+    # reasons: {tieu_chi_key: ly_do_text} - CHI luu cho tieu chi thuc su <=3 sao (khong tin tuong
+    # nguyen si input tu client - loc lai o day, phong truong hop client gui du lieu khong khop).
     clean_reasons = {}
     if reasons:
         for k, text in reasons.items():
             if k in CRITERIA_KEYS and scores.get(k, 5) <= 3 and isinstance(text, str) and text.strip():
                 clean_reasons[k] = text.strip()[:500]
 
-    record["scores"] = {k: scores[k] for k in CRITERIA_KEYS}
-    record["comment"] = (comment or "").strip()[:2000]  # chan do dai hop ly, tranh 1 khach spam file qua to
-    record["reasons"] = clean_reasons or None
-    record["status"] = "completed"
-    record["submitted_at"] = _now_iso()
-    data["surveys"][token] = record
-    _save(data)
-    return record
+    patch = {
+        "scores": {k: scores[k] for k in CRITERIA_KEYS},
+        "comment": (comment or "").strip()[:2000],  # chan do dai hop ly, tranh 1 khach spam qua to
+        "reasons": clean_reasons or None,
+        "status": "completed",
+        "submitted_at": _now_iso(),
+    }
+    with _client() as c:
+        r = c.patch(f"/{TABLE}", params={"token": f"eq.{token}"}, json=patch, headers={"Prefer": "return=representation"})
+        _raise_for_status(r)
+        rows = r.json()
+        return rows[0] if rows else {**record, **patch}
 
 
 def list_surveys():
     """Toan bo khao sat (ca pending lan completed), moi gui/tao truoc len dau."""
-    rows = list(_load()["surveys"].values())
-    rows.sort(key=lambda r: r["created_at"], reverse=True)
-    return rows
+    with _client() as c:
+        r = c.get(f"/{TABLE}", params={"order": "created_at.desc", "limit": 10000})
+        _raise_for_status(r)
+        return r.json()
 
 
 def _in_range(iso_str, start, end):
@@ -237,8 +253,10 @@ def summary(start=None, end=None):
     - trend: diem trung binh tong theo ngay (submitted_at trong ky) - de ve bieu do xu huong
     - low_score: danh sach khao sat co diem trung binh < 3 (can chu y) - deu tinh tren completed
       trong ky, sap moi nhat len dau
-    Khong loc theo start/end thi lay TOAN BO lich su."""
-    rows = list(_load()["surveys"].values())
+    Khong loc theo start/end thi lay TOAN BO lich su. Logic tinh toan ben duoi GIU NGUYEN 100% so
+    voi ban luu file JSON truoc day - chi khac nguon `rows` (gio doc tu list_surveys()/Supabase
+    thay vi _load()["surveys"].values())."""
+    rows = list_surveys()
 
     sent_in_range = [r for r in rows if _in_range(r["created_at"], start, end)] if (start or end) else rows
     completed_in_range = (
@@ -292,13 +310,11 @@ def summary(start=None, end=None):
         if r.get("scores")
     ]
 
-    # Xep hang ly do khong hai long THEO TUNG tieu chi - THEM 2026-08-28 (nguoi dung yeu cau, xem
-    # changelog dau file). Gom theo CHUOI TRUNG KHOP TUYET DOI sau khi chuan hoa (strip + hoa/thuong
-    # + gop khoang trang lien tiep) - KHONG phai gom theo y nghia/NLP (khong co model that dung o
-    # day, tranh bia ra 1 "phan loai chu de" khong that su ton tai). Neu nhieu khach viet CUNG 1 cau
-    # y het nhau (vd cung sao chep 1 cau tu goi y nao do) thi "count" > 1 phan anh dung tan suat that;
-    # neu tat ca deu viet khac nhau (thuong gap voi van ban tu do) thi day chi la danh sach theo thoi
-    # gian, moi dong count=1 - KHONG bia them y nghia "pho bien" neu du lieu khong cho thay dieu do.
+    # Xep hang ly do khong hai long THEO TUNG tieu chi - Gom theo CHUOI TRUNG KHOP TUYET DOI sau
+    # khi chuan hoa (strip + hoa/thuong + gop khoang trang lien tiep) - KHONG phai gom theo y
+    # nghia/NLP (khong co model that dung o day, tranh bia ra 1 "phan loai chu de" khong that su
+    # ton tai). Neu nhieu khach viet CUNG 1 cau y het nhau thi "count" > 1 phan anh dung tan suat
+    # that; neu tat ca deu viet khac nhau thi day chi la danh sach theo thoi gian, moi dong count=1.
     reasons_by_criterion = {}
     for key in CRITERIA_KEYS:
         buckets = {}  # chuoi da chuan hoa -> {"text": ban goc dau tien gap, "count", "last_seen", "score_sum"}
@@ -315,13 +331,13 @@ def summary(start=None, end=None):
             b["score_sum"] += (r.get("scores") or {}).get(key, 0)
             if not b["last_seen"] or r["submitted_at"] > b["last_seen"]:
                 b["last_seen"] = r["submitted_at"]
-        rows = [
+        crit_rows = [
             {"text": b["text"], "count": b["count"], "last_seen": b["last_seen"], "avg_score": round(b["score_sum"] / b["count"], 2)}
             for b in buckets.values()
         ]
         # count giam dan (ly do lap lai nhieu nhat len dau); cung count thi last_seen giam dan (moi nhat truoc).
-        rows.sort(key=lambda x: (x["count"], x["last_seen"] or ""), reverse=True)
-        reasons_by_criterion[key] = rows
+        crit_rows.sort(key=lambda x: (x["count"], x["last_seen"] or ""), reverse=True)
+        reasons_by_criterion[key] = crit_rows
 
     return {
         "status": "ok",

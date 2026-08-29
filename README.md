@@ -30,13 +30,51 @@ Mở `http://localhost:8000/csat/survey-open` để xem form, `http://localhost:
    link cố định, không đổi theo thời gian (khác hẳn link `trycloudflare.com` tạm thời).
 5. Link khảo sát gửi khách: `https://<tên>.onrender.com/csat/survey-open`.
 
-## ⚠️ Lưu ý về độ bền dữ liệu
+## ⚠️ Đã từng mất dữ liệu thật (2026-08-29) — giờ dùng Supabase, không còn dùng file JSON nữa
 
-Dữ liệu khảo sát lưu trong 1 file JSON ngay trên đĩa của service (`data/csat_surveys.json`).
-Trên gói free của Render, đĩa là **ephemeral** — có thể bị xoá sạch mỗi khi bạn deploy lại code
-mới (chưa kiểm chứng chắc chắn việc "ngủ do không hoạt động" có xoá hay không). Nếu số lượng
-khảo sát quan trọng và cần đảm bảo không bao giờ mất, nên nâng cấp sang Render persistent disk
-(có phí) hoặc chuyển lưu trữ sang 1 database ngoài (chưa làm ở bản này).
+Bản đầu tiên lưu khảo sát vào 1 file JSON ngay trên đĩa của service (`data/csat_surveys.json`).
+Trên gói free của Render, đĩa là **ephemeral** — 2 phiếu khảo sát thật của người dùng đã bị **xoá
+sạch** khi service khởi động lại/redeploy, đúng như cảnh báo cũ ở đây đã nói trước. Để không lặp
+lại, service này giờ lưu qua **Supabase** (Postgres miễn phí) thay vì file JSON — làm theo phần
+dưới đây để thiết lập.
+
+## Thiết lập Supabase (bắt buộc, làm 1 lần)
+
+1. Vào [supabase.com](https://supabase.com) → đăng ký tài khoản miễn phí (có thể dùng GitHub để
+   đăng nhập nhanh) → **New project** → đặt tên tuỳ ý, chọn 1 mật khẩu database (lưu lại, ít dùng
+   tới nhưng phòng khi cần), chọn khu vực gần nhất → **Create new project** (đợi ~1-2 phút để
+   Supabase khởi tạo).
+2. Vào project vừa tạo → menu bên trái chọn **SQL Editor** → **New query** → dán đoạn SQL sau rồi
+   bấm **Run**:
+
+   ```sql
+   create table csat_surveys (
+     token text primary key,
+     customer_id text,
+     customer_name text,
+     phone text,
+     zalo_user_id text,
+     context_label text,
+     created_at timestamptz not null default now(),
+     status text not null default 'pending',
+     scores jsonb,
+     comment text,
+     reasons jsonb,
+     submitted_at timestamptz
+   );
+   ```
+
+3. Vào **Project Settings** (biểu tượng bánh răng) → **API** → lấy 2 giá trị:
+   - **Project URL** (dạng `https://xxxxxxxxxxxx.supabase.co`) → đây là `SUPABASE_URL`.
+   - **anon public** key (chuỗi dài trong mục "Project API keys") → đây là `SUPABASE_KEY`.
+4. Vào Render → chọn service `csat-public` → **Environment** → **Add Environment Variable** →
+   thêm đúng 2 biến:
+   - `SUPABASE_URL` = Project URL vừa lấy (không có dấu `/` ở cuối)
+   - `SUPABASE_KEY` = anon public key vừa lấy
+5. Render sẽ tự khởi động lại service sau khi lưu biến môi trường — xong, từ giờ mọi phiếu khảo
+   sát mới sẽ lưu bền vào Supabase, không còn bị mất khi Render khởi động lại/redeploy nữa.
+
+Muốn xem lại dữ liệu thô bất kỳ lúc nào: vào Supabase → **Table Editor** → bảng `csat_surveys`.
 
 ## Free tier "ngủ" sau 15 phút không có ai truy cập
 
