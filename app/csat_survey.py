@@ -412,6 +412,32 @@ def summary(start=None, end=None):
         x["rank"] = i + 1
         x["gap_from_best"] = round(best_avg - x["avg"], 2) if (best_avg is not None and x["avg"] is not None) else None
 
+    # Chi tiet tung phieu cham THAP (<=3 sao) THEO TUNG tieu chi - THEM 2026-08-31 theo yeu cau
+    # nguoi dung "Moi tieu chi se co muc xem chi tiet, bam vao se hien thi chi tiet cac phieu cua
+    # khach nao danh gia te phan do". Khac voi reasons_by_criterion o tren (gom theo NOI DUNG ly do
+    # trung khop, mat danh tinh tung khach) - day la DANH SACH TUNG PHIEU rieng le (ten khach, ngay,
+    # diem so, ly do/gop y CHINH khach do viet), sap moi nhat len dau, gioi han 20 dong/tieu chi
+    # giong cac danh sach khac trong file nay (tranh payload phinh to khi du lieu nhieu).
+    low_score_by_criterion = {}
+    for c in CRITERIA:
+        key = c["key"]
+        rows = []
+        for r in completed_in_range:
+            scores = r.get("scores") or {}
+            sc = scores.get(key)
+            if sc is None or sc > 3:
+                continue
+            rows.append({
+                "customer_name": r.get("customer_name") or "Khách qua link khảo sát",
+                "phone": r.get("phone"),
+                "submitted_at": r.get("submitted_at"),
+                "score": sc,
+                "reason": (r.get("reasons") or {}).get(key),
+                "comment": r.get("comment"),
+            })
+        rows.sort(key=lambda x: x["submitted_at"] or "", reverse=True)
+        low_score_by_criterion[key] = rows[:20]
+
     # Thong ke "van de khach hang gap phai nhieu nhat" - GOM tat ca ly do tu reasons_by_criterion
     # (da co san, tach theo tung tieu chi) THANH 1 danh sach chung, sap theo so lan nhac toi nhieu
     # nhat truoc (2026-08-29, yeu cau nguoi dung "phan tich thong ke noi dung nhung van de ma khach
@@ -445,6 +471,7 @@ def summary(start=None, end=None):
         "criteria_ranking": criteria_ranking,
         "top_issues": top_issues,
         "ai_insights": ai_insights,
+        "low_score_by_criterion": low_score_by_criterion,
     }
 
 
