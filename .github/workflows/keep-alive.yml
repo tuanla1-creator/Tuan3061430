@@ -1,0 +1,21 @@
+name: Keep csat-public awake
+
+# Render free tier "ngủ" (spin down) sau 15 phút khong co request nao - khach hang bam vao link
+# luc do se thay man hinh "waking up" cua Render truoc khi vao duoc form that, de bi hieu nham la
+# lua dao (nguoi dung bao cao 2026-08-29). Workflow nay ping /health moi 10 phut (< 15 phut nguong
+# ngu cua Render) de giu service LUON SAN SANG, khach bam vao la vao thang form ngay khong cho.
+#
+# Mien phi hoan toan: GitHub Actions cho khong gian rieng (khong tinh vao phut build cua repo
+# khac), repo nay nho + chi curl 1 lan/10 phut nen khong dang lo ve gioi han phut mien phi cua
+# GitHub (2.000 phut/thang cho tai khoan ca nhan).
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}  # cho phep bam chay tay tu tab Actions de test ngay, khong can doi lich
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: curl -fsS --max-time 30 https://tuan3061430.onrender.com/health
