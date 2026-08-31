@@ -505,6 +505,7 @@ def _generate_insights(criteria_ranking, top_issues, avg_overall, total_complete
         }]
 
     insights = []
+    flagged_keys = set()
     worst_candidates = [c for c in criteria_ranking if c["avg"] is not None and c["avg"] < 4][:2]
     for c in worst_candidates:
         severity = "high" if c["avg"] < 3 else "medium"
@@ -520,6 +521,31 @@ def _generate_insights(criteria_ranking, top_issues, avg_overall, total_complete
             "detail": " · ".join(evidence),
             "suggestion": _ACTION_MAP.get(c["key"]),
         })
+        flagged_keys.add(c["key"])
+
+    # THEM 2026-09-01 - phat hien qua nguoi dung "chat luong dich vu nguoi ta danh gia kem kia sao
+    # khong phan tich": tieu chi co diem TRUNG BINH van >=4 (nen khong lot vao worst_candidates o
+    # tren) nhung van co 1 CUM phan hoi ca the cham that su thap (>=2 phieu <=3 sao) - trung binh
+    # cao co the "che lap" 1 nhom khach dang gap dung 1 van de cu the (vd nhieu khach 5 sao + vai
+    # khach 2-3 sao vi cung 1 ly do that) neu chi nhin trung binh se khong bao gio thay duoc. Nguong
+    # >=2 de tranh bao dong tren 1 phieu le ngau nhien/khong dai dien.
+    _NOTABLE_LOW_COUNT = 2
+    for c in criteria_ranking:
+        if len(insights) >= 3 or c["key"] in flagged_keys:
+            continue
+        if c["avg"] is None or c["count_low"] < _NOTABLE_LOW_COUNT:
+            continue
+        related = [i for i in top_issues if i["criterion_key"] == c["key"]][:2]
+        evidence = [f"Điểm trung bình vẫn đạt {c['avg']:.1f}/5, nhưng có {c['count_low']} phản hồi chấm ≤3 sao ở tiêu chí này"]
+        if related:
+            evidence.append("góp ý nhắc nhiều nhất: " + "; ".join(f"\"{i['text']}\" (×{i['count']})" for i in related))
+        insights.append({
+            "severity": "medium", "criterion_key": c["key"], "criterion_label": c["label"],
+            "title": f"{c['label']} có một nhóm đánh giá thấp đáng chú ý",
+            "detail": " · ".join(evidence),
+            "suggestion": _ACTION_MAP.get(c["key"]),
+        })
+        flagged_keys.add(c["key"])
 
     if not insights:
         insights.append({
