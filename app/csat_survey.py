@@ -505,6 +505,17 @@ _ACTION_MAP = {
 }
 
 
+def _truncate_quote(text, limit=55):
+    """Rut gon 1 cau gop y dai (nguyen van khach viet, co the la 1 doan van dai lan man) xuong con
+    toi da `limit` ky tu + '...' - THEM 2026-09-01 theo phan hoi nguoi dung "tom tat lai 1 cach co
+    dong nhat nhe, nay phan tich ma" (the "AI Insight" truoc do trich NGUYEN VAN ca doan gop y dai,
+    doc rat roi, khong con giong 1 "nhan dinh" nua). Day la CAT BOT hien thi, khong phai tom tat
+    bang AI that (van giu dung tinh than rule-based, khong bia/dien giai lai y nghia cau khach viet -
+    xem comment o dau file ve ly do chon rule-based thay vi goi API LLM that)."""
+    text = text.strip()
+    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
 def _generate_insights(criteria_ranking, top_issues, avg_overall, total_completed):
     if total_completed < _MIN_SAMPLE_FOR_INSIGHT:
         return [{
@@ -519,12 +530,14 @@ def _generate_insights(criteria_ranking, top_issues, avg_overall, total_complete
     worst_candidates = [c for c in criteria_ranking if c["avg"] is not None and c["avg"] < 4][:2]
     for c in worst_candidates:
         severity = "high" if c["avg"] < 3 else "medium"
-        related = [i for i in top_issues if i["criterion_key"] == c["key"]][:2]
-        evidence = [f"Điểm trung bình {c['avg']:.1f}/5" + (" — thấp nhất trong 5 tiêu chí" if c["rank"] == 1 else "")]
+        # CHI lay 1 gop y tieu bieu nhat (truoc lay 2) + RUT GON (truoc trich nguyen van) - "AI
+        # Insight" la 1 nhan dinh CO DONG, khong phai noi lai het du lieu tho (xem _truncate_quote()).
+        related = [i for i in top_issues if i["criterion_key"] == c["key"]][:1]
+        evidence = [f"TB {c['avg']:.1f}/5" + (" — thấp nhất" if c["rank"] == 1 else "")]
         if c["count_low"]:
-            evidence.append(f"{c['count_low']} phản hồi chấm ≤3 sao ở tiêu chí này")
+            evidence.append(f"{c['count_low']} phản hồi ≤3 sao")
         if related:
-            evidence.append("góp ý nhắc nhiều nhất: " + "; ".join(f"\"{i['text']}\" (×{i['count']})" for i in related))
+            evidence.append(f"góp ý: \"{_truncate_quote(related[0]['text'])}\"")
         insights.append({
             "severity": severity, "criterion_key": c["key"], "criterion_label": c["label"],
             "title": f"{c['label']} đang là điểm yếu nhất" if c["rank"] == 1 else f"{c['label']} cũng cần lưu ý",
@@ -545,10 +558,10 @@ def _generate_insights(criteria_ranking, top_issues, avg_overall, total_complete
             continue
         if c["avg"] is None or c["count_low"] < _NOTABLE_LOW_COUNT:
             continue
-        related = [i for i in top_issues if i["criterion_key"] == c["key"]][:2]
-        evidence = [f"Điểm trung bình vẫn đạt {c['avg']:.1f}/5, nhưng có {c['count_low']} phản hồi chấm ≤3 sao ở tiêu chí này"]
+        related = [i for i in top_issues if i["criterion_key"] == c["key"]][:1]
+        evidence = [f"TB {c['avg']:.1f}/5 (vẫn ổn)", f"{c['count_low']} phản hồi ≤3 sao"]
         if related:
-            evidence.append("góp ý nhắc nhiều nhất: " + "; ".join(f"\"{i['text']}\" (×{i['count']})" for i in related))
+            evidence.append(f"góp ý: \"{_truncate_quote(related[0]['text'])}\"")
         insights.append({
             "severity": "medium", "criterion_key": c["key"], "criterion_label": c["label"],
             "title": f"{c['label']} có một nhóm đánh giá thấp đáng chú ý",
