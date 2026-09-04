@@ -573,7 +573,12 @@ def _summarize_with_ai(text):
     except Exception as e:
         # LOG TAM 2026-09-04 de chan doan vi sao AI khong tom tat duoc - xoa dong nay sau khi xac
         # dinh xong nguyen nhan (khong anh huong fallback, chi de debug qua Render Logs).
-        print(f"[csat _summarize_with_ai] AI call failed: {type(e).__name__}: {e}", flush=True)
+        body = ""
+        try:
+            body = e.response.text[:300]  # noi dung loi that tu Anthropic (vd: het credit, sai key...)
+        except Exception:
+            pass
+        print(f"[csat _summarize_with_ai] AI call failed: {type(e).__name__}: {e} | body={body}", flush=True)
         result = fallback
     _ai_summary_cache[text] = result
     return result
