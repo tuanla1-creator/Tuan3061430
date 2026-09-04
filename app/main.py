@@ -67,12 +67,79 @@ def csat_survey_open_page():
     return HTMLResponse(csat_survey_page.render_open_survey_page())
 
 
+class CsatSurveyCreate(BaseModel):
+    customer_name: str | None = None
+    phone: str | None = None
+    context_label: str | None = None  # vd "Đơn #12345" - ghi chú tự do, không bắt buộc
+
+
 class CsatSurveySubmit(BaseModel):
     scores: dict[str, int]
     comment: str | None = None
     reasons: dict[str, str] | None = None
     customer_name: str | None = None
     phone: str | None = None
+
+
+@app.post("/csat/surveys")
+def csat_create_survey(body: CsatSurveyCreate):
+    """THEM LAI 2026-09-04: tao 1 khao sat RIENG cho 1 khach/don cu the (khac /csat/survey-open
+    la link DUNG CHUNG gui hang loat) - nguoi dung yeu cau "muon moi phieu khao sat co ma so
+    nhat dinh de doi chieu dung phieu nao la phieu nao". Luong nay (create_survey() +
+    GET/POST /csat/survey/{token}) da co san trong services/analytics-service/app/main.py tu
+    truoc, chi chua tung duoc bat ben csat-public (service dang chay that) - gio them vao, giu
+    SONG SONG voi link chung, KHONG thay the. KHONG tu dong gui qua Zalo (dung dinh huong "khong
+    import module GHN-internal" cua service nay) - agent tu copy survey_url tra ve va gui thu
+    cong qua Zalo/tin nhan nhu link chung."""
+    try:
+        record = csat_survey.create_survey(
+            customer_id=None,
+            customer_name=body.customer_name,
+            phone=body.phone,
+            context_label=body.context_label,
+        )
+    except csat_survey.StorageNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except csat_survey.StorageError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    survey_url = f"{_public_base_url()}/csat/survey/{record['token']}"
+    return {
+        "status": "ok",
+        "survey": record,
+        "survey_url": survey_url,
+        "survey_code": csat_survey.format_survey_code(record.get("seq_no")),
+    }
+
+
+@app.get("/csat/survey/{token}", response_class=HTMLResponse)
+def csat_survey_page_get(token: str):
+    """Trang khao sat CONG KHAI cho 1 khach/don cu the (link rieng tu POST /csat/surveys o
+    tren) - hien "Mã phiếu" ngay tren dau de khach doi chieu dung phieu, khac /csat/survey-open
+    la form trong khong gan voi ai."""
+    record = csat_survey.get_survey(token)
+    if not record:
+        return HTMLResponse(csat_survey_page.render_not_found_page(), status_code=404)
+    return HTMLResponse(csat_survey_page.render_survey_page(record))
+
+
+@app.post("/csat/survey/{token}/submit")
+def csat_survey_submit(token: str, body: CsatSurveySubmit):
+    """Khach bam 'Gui danh gia' tren trang link RIENG (GET /csat/survey/{token} o tren) goi vao
+    day. Idempotent theo huong an toan: khao sat da 'completed' roi thi tu choi gui lai (khac
+    /csat/survey-open/submit - link chung khong co khai niem 'da nop roi')."""
+    try:
+        record = csat_survey.submit_survey(token, body.scores, body.comment, reasons=body.reasons)
+    except csat_survey.SurveyNotFound:
+        raise HTTPException(status_code=404, detail="Không tìm thấy khảo sát.")
+    except csat_survey.SurveyAlreadySubmitted:
+        raise HTTPException(status_code=409, detail="Khảo sát này đã được đánh giá trước đó.")
+    except csat_survey.InvalidScores as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except csat_survey.StorageNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except csat_survey.StorageError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"status": "ok", "survey": record}
 
 
 @app.post("/csat/survey-open/submit")

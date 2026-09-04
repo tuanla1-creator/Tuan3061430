@@ -66,6 +66,20 @@ CRITERIA = [
 CRITERIA_KEYS = [c["key"] for c in CRITERIA]
 
 
+def format_survey_code(seq_no):
+    """Chuyen so thu tu tang dan (seq_no - cot 'seq_no bigserial' trong Supabase, tu dong tang
+    o MOI ban ghi moi khong phan biet luong tao ra no) thanh 1 'ma phieu' ngan gon de doc, hien
+    thi cho CA khach (tren trang khao sat rieng /csat/survey/<token>) lan agent (dashboard noi
+    bo) doi chieu dung "phieu nao la phieu nao". THEM 2026-09-04 theo yeu cau nguoi dung "muon
+    moi phieu khao sat co ma so nhat dinh" - quay lai dung THEM link RIENG tung khach/don (luong
+    nay tung bi go UI 2026-08-29 de don gian hoa, gio giu SONG SONG voi link chung, KHONG thay
+    the link chung). seq_no co the None neu cot chua duoc tao trong Supabase (xem README.md muc
+    "Thiet lap ma phieu") - tra ve None de noi goi tu quyet dinh hien "—" thay vi crash."""
+    if not seq_no:
+        return None
+    return f"KS{int(seq_no):06d}"
+
+
 class SurveyNotFound(Exception):
     pass
 

@@ -52,6 +52,7 @@ dưới đây để thiết lập.
    ```sql
    create table csat_surveys (
      token text primary key,
+     seq_no bigserial,
      customer_id text,
      customer_name text,
      phone text,
@@ -66,6 +67,10 @@ dưới đây để thiết lập.
    );
    ```
 
+   `seq_no` (thêm 2026-09-04) tự động tăng dần ở MỌI bản ghi mới (không phân biệt tạo từ link
+   chung hay link riêng) — dùng để sinh "Mã phiếu" (vd `KS000123`) hiển thị cho khách đối chiếu,
+   xem mục "Thiết lập mã phiếu" bên dưới nếu bảng đã tạo từ trước (chưa có cột này).
+
 3. Vào **Project Settings** (biểu tượng bánh răng) → **API** → lấy 2 giá trị:
    - **Project URL** (dạng `https://xxxxxxxxxxxx.supabase.co`) → đây là `SUPABASE_URL`.
    - **anon public** key (chuỗi dài trong mục "Project API keys") → đây là `SUPABASE_KEY`.
@@ -77,6 +82,23 @@ dưới đây để thiết lập.
    sát mới sẽ lưu bền vào Supabase, không còn bị mất khi Render khởi động lại/redeploy nữa.
 
 Muốn xem lại dữ liệu thô bất kỳ lúc nào: vào Supabase → **Table Editor** → bảng `csat_surveys`.
+
+## Thiết lập "Mã phiếu" (bắt buộc nếu bảng đã tạo TRƯỚC 2026-09-04)
+
+Tính năng "Tạo link khảo sát riêng" (mỗi khách/đơn 1 link, kèm mã phiếu vd `KS000123` để khách
+đối chiếu đúng phiếu nào là phiếu nào) cần cột `seq_no` trong bảng `csat_surveys`. Nếu bảng đã
+tạo theo hướng dẫn phía trên **trước ngày 2026-09-04**, cột này chưa có — vào Supabase →
+**SQL Editor** → **New query** → chạy đúng 1 câu sau (chỉ cần chạy 1 lần, an toàn với dữ liệu cũ,
+không xoá gì cả):
+
+```sql
+alter table csat_surveys add column if not exists seq_no bigserial;
+```
+
+Không chạy câu này thì mọi thứ khác vẫn hoạt động bình thường — chỉ riêng "Mã phiếu" sẽ không
+hiện (ẩn hẳn badge trên trang khách, hoặc hiện "—" ở khối "Tạo link khảo sát riêng" trên dashboard)
+thay vì số thật (xem `format_survey_code()` trong `csat_survey.py`, tự fallback an toàn, không
+làm sập trang).
 
 ## Thiết lập AI tóm tắt góp ý (tuỳ chọn, 2026-09-01)
 

@@ -9,7 +9,7 @@ thoai co the mang, cham hoac chan tai nguyen ngoai mien."""
 
 import html
 
-from .csat_survey import CRITERIA
+from .csat_survey import CRITERIA, format_survey_code
 
 _ORANGE = "#FF7A00"
 _ORANGE_DEEP = "#E85F00"
@@ -36,6 +36,7 @@ body{{min-height:100vh; display:flex; justify-content:center; padding:0 0 40px;}
 .hero .logo{{font-weight:800; font-size:15px; letter-spacing:.06em; text-transform:uppercase; opacity:.92;}}
 .hero h1{{margin:10px 0 0; font-size:19px; font-weight:800; line-height:1.35;}}
 .hero p{{margin:8px 0 0; font-size:13px; opacity:.92; line-height:1.5;}}
+.survey-code-badge{{display:inline-block; margin-top:12px; padding:5px 14px; border-radius:999px; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.35); font-size:12.5px; font-weight:800; letter-spacing:.03em;}}
 .card{{background:var(--card); border-radius:16px; box-shadow:0 8px 28px rgba(20,20,30,.08); margin:-24px 16px 0; padding:20px 18px 22px; position:relative;}}
 .crit{{padding:16px 0; border-bottom:1px solid var(--border);}}
 .crit:last-of-type{{border-bottom:none;}}
@@ -84,6 +85,16 @@ def _star_icon():
     return '<svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 6.2 6.8.7-5.1 4.6 1.5 6.7L12 17.1l-6.1 3.6 1.5-6.7-5.1-4.6 6.8-.7z"/></svg>'
 
 
+def _code_badge_html(record):
+    """Badge nho hien 'Mã phiếu' (KSxxxxxx) trong hero - THEM 2026-09-04 theo yeu cau nguoi dung
+    "muon moi phieu khao sat co ma so nhat dinh de khach biet phieu nao la phieu nao". Rong neu
+    seq_no chua co (Supabase chua tao cot - xem README.md), khong hien gi thay vi hien "None"."""
+    code = format_survey_code(record.get("seq_no"))
+    if not code:
+        return ""
+    return f'<div class="survey-code-badge">Mã phiếu: {_esc(code)}</div>'
+
+
 def render_survey_page(record):
     """record: dict tu csat_survey.get_survey() (khong None - da kiem tra o goi noi trong main.py)."""
     customer_name = record.get("customer_name") or "bạn"
@@ -92,6 +103,7 @@ def render_survey_page(record):
   <div class="logo">GHN · Khảo sát chất lượng dịch vụ</div>
   <h1>Cảm ơn {_esc(customer_name)} đã tin tưởng GHN!</h1>
   <p>Chúng tôi luôn mong muốn mang đến trải nghiệm tốt nhất. Dành khoảng 30 giây chia sẻ cảm nhận của bạn về dịch vụ chăm sóc khách hàng qua Zalo nhé.</p>
+  {_code_badge_html(record)}
 </div>"""
 
     if record["status"] == "completed":
@@ -335,11 +347,15 @@ def render_open_survey_page():
     }}).then(function(res){{
       if (!res.ok) return res.json().then(function(e){{ throw new Error(e.detail || 'Có lỗi xảy ra'); }});
       return res.json();
-    }}).then(function(){{
+    }}).then(function(data){{
+      // Mã phiếu (KSxxxxxx) - THÊM 2026-09-04, tính từ seq_no Supabase trả về ngay trong response
+      // này (không cần gọi API riêng) - hiện cho khách biết phiếu vừa nộp là phiếu số mấy.
+      var seqNo = data && data.survey ? data.survey.seq_no : null;
+      var codeHtml = seqNo ? '<div class="survey-code-badge" style="background:rgba(27,175,122,.12); border-color:rgba(27,175,122,.35); color:#1BAF7A;">Mã phiếu: KS' + String(seqNo).padStart(6, '0') + '</div>' : '';
       document.getElementById('surveyCard').outerHTML =
         '<div class="state-card"><div class="icon">{_check_icon()}</div>' +
         '<h2>Cảm ơn bạn đã đánh giá!</h2>' +
-        '<p>Phản hồi của bạn đã được ghi nhận. Chúc bạn một ngày tốt lành!</p></div>';
+        '<p>Phản hồi của bạn đã được ghi nhận. Chúc bạn một ngày tốt lành!</p>' + codeHtml + '</div>';
     }}).catch(function(err){{
       errEl.textContent = err.message || 'Có lỗi xảy ra, vui lòng thử lại.';
       errEl.style.display = 'block';
