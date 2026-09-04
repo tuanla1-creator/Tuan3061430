@@ -570,7 +570,10 @@ def _summarize_with_ai(text):
         r.raise_for_status()
         summarized = r.json()["content"][0]["text"].strip()
         result = summarized or fallback
-    except Exception:
+    except Exception as e:
+        # LOG TAM 2026-09-04 de chan doan vi sao AI khong tom tat duoc - xoa dong nay sau khi xac
+        # dinh xong nguyen nhan (khong anh huong fallback, chi de debug qua Render Logs).
+        print(f"[csat _summarize_with_ai] AI call failed: {type(e).__name__}: {e}", flush=True)
         result = fallback
     _ai_summary_cache[text] = result
     return result
