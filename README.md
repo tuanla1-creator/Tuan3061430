@@ -5,8 +5,10 @@ trong memory dự án) — tách riêng để **deploy lên cloud miễn phí, c
 máy cá nhân có đang bật hay không (khác với Cloudflare quick tunnel trước đó — đổi domain mỗi
 lần chạy lại lệnh + cần máy bật liên tục).
 
-Không import bất kỳ module GHN nội bộ nào khác (không cần API key/credential nào cả) — an toàn
-để đưa lên host công khai miễn phí.
+Không import bất kỳ module GHN nội bộ nào khác — an toàn để đưa lên host công khai miễn phí.
+Cần `SUPABASE_URL`/`SUPABASE_KEY` để lưu dữ liệu (bắt buộc, xem mục bên dưới); `ANTHROPIC_API_KEY`
+là **tuỳ chọn** (thêm 2026-09-01) — chỉ dùng để tóm tắt góp ý khách bằng AI thật trong "AI Insight",
+không có cũng chạy bình thường (tự rút gọn bằng cách cắt ký tự thay vì tóm tắt thật).
 
 ## Chạy thử ở máy (trước khi deploy)
 
@@ -75,6 +77,24 @@ dưới đây để thiết lập.
    sát mới sẽ lưu bền vào Supabase, không còn bị mất khi Render khởi động lại/redeploy nữa.
 
 Muốn xem lại dữ liệu thô bất kỳ lúc nào: vào Supabase → **Table Editor** → bảng `csat_surveys`.
+
+## Thiết lập AI tóm tắt góp ý (tuỳ chọn, 2026-09-01)
+
+Mặc định "AI Insight" chỉ **cắt bớt** góp ý dài của khách (kèm dấu "…") — không hiểu nội dung nên
+không thể viết lại ngắn gọn. Nếu muốn góp ý được **tóm tắt thật** (AI đọc và diễn đạt lại), thêm 1
+biến môi trường:
+
+1. Vào [console.anthropic.com](https://console.anthropic.com) → đăng nhập/đăng ký → **API Keys** →
+   tạo 1 API key mới (dạng `sk-ant-...`).
+2. Vào Render → chọn service `csat-public` → **Environment** → **Add Environment Variable**:
+   - `ANTHROPIC_API_KEY` = API key vừa tạo
+3. Render tự khởi động lại service sau khi lưu — từ giờ góp ý dài trong "AI Insight" sẽ được tóm
+   tắt thật bằng Claude (model Haiku, nhanh và rẻ) thay vì chỉ cắt ký tự.
+
+**Lưu ý chi phí**: mỗi câu góp ý CHỈ được tóm tắt 1 lần rồi lưu tạm trong bộ nhớ service (mất khi
+service khởi động lại/ngủ-thức dậy) — không gọi lại API cho cùng 1 câu ở những lần tải trang sau,
+nên chi phí rất nhỏ (vài request mỗi khi có góp ý MỚI, không phải mỗi lần ai đó mở dashboard).
+Không đặt biến này thì tính năng vẫn chạy bình thường, chỉ quay về cắt bớt ký tự như trước.
 
 ## Free tier "ngủ" sau 15 phút không có ai truy cập
 

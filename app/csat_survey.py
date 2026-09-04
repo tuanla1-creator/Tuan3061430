@@ -489,13 +489,15 @@ def summary(start=None, end=None):
 # lech trung binh rat nhieu, "nhan dinh" luc do chi la nhieu, khong co y nghia thong ke.
 _MIN_SAMPLE_FOR_INSIGHT = 5
 
-# Goi y giai phap RULE-BASED theo tung tieu chi (2026-08-29, yeu cau nguoi dung "AI insight dua ra
-# giai phap") - CHON rule-based thay vi goi API LLM that: du an chua co ANTHROPIC_API_KEY/
-# OPENAI_API_KEY o dau ca (services/csat-public deploy tren Render free tier, khong muon them chi
-# phi/API key/goi mang cho 1 tinh nang thong ke), va giu dung tinh than "khong bia du lieu" xuyen
-# suot file nay (vd reasons_by_criterion o tren). Moi cau goi y o day CO DIEU KIEN, luon gan voi so
-# lieu that (diem, so luot cham thap, noi dung gop y that) chu khong phai van ban chung chung khong
-# lien quan du lieu.
+# Goi y giai phap - moi cau CO DIEU KIEN, luon gan voi so lieu that (diem, so luot cham thap, noi
+# dung gop y that) chu khong phai van ban chung chung khong lien quan du lieu. Ban than PHAN LOGIC
+# (tieu chi nao dang la diem yeu, muc do nghiem trong) van la RULE-BASED (nguong so tren so that,
+# xem _generate_insights() ben duoi) - KHONG doi sang de 1 AI tu quyet dinh "tieu chi nao dang te",
+# tranh AI "bia" ra ket luan khong dung voi so lieu. **2026-09-01: rieng PHAN TRICH DAN gop y khach
+# (1 cau dai) gio goi THAT Claude API de tom tat that su** (nguoi dung xac nhan sau khi hoi lai
+# "sao ko tom tat duoc nhi" - _truncate_quote() truoc chi CAT BOT ky tu, khong hieu noi dung) - xem
+# _summarize_with_ai() ben duoi, luon fallback ve _truncate_quote() neu thieu ANTHROPIC_API_KEY
+# hoac goi API loi.
 _ACTION_MAP = {
     "chat_luong_dich_vu": "Rà soát lại quy trình giao nhận, đối chiếu thời gian/tình trạng hàng thực tế so với cam kết ở các đơn liên quan đến những phản hồi điểm thấp.",
     "nhan_vien_ho_tro": "Đào tạo lại kỹ năng trao đổi qua Zalo (thái độ, tốc độ phản hồi) cho nhân viên hỗ trợ, ưu tiên rà soát các ca có điểm thấp gần đây.",
@@ -507,13 +509,71 @@ _ACTION_MAP = {
 
 def _truncate_quote(text, limit=55):
     """Rut gon 1 cau gop y dai (nguyen van khach viet, co the la 1 doan van dai lan man) xuong con
-    toi da `limit` ky tu + '...' - THEM 2026-09-01 theo phan hoi nguoi dung "tom tat lai 1 cach co
-    dong nhat nhe, nay phan tich ma" (the "AI Insight" truoc do trich NGUYEN VAN ca doan gop y dai,
-    doc rat roi, khong con giong 1 "nhan dinh" nua). Day la CAT BOT hien thi, khong phai tom tat
-    bang AI that (van giu dung tinh than rule-based, khong bia/dien giai lai y nghia cau khach viet -
-    xem comment o dau file ve ly do chon rule-based thay vi goi API LLM that)."""
+    toi da `limit` ky tu + '...' - dung lam FALLBACK cho _summarize_with_ai() khi khong goi duoc AI
+    that (thieu key/loi mang). Day la CAT BOT hien thi don thuan, khong hieu/dien giai lai noi dung."""
     text = text.strip()
     return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
+# THEM 2026-09-01 sau khi nguoi dung hoi lai "sao ko tom tat duoc nhi" va xac nhan muon doi sang AI
+# THAT - day la NGOAI LE co chu dich them 1 secret vao module nay (truoc gio co tinh giu KHONG
+# secret nao trong logic insight, chi _truncate_quote() thuan code). ANTHROPIC_API_KEY PHAI do
+# nguoi dung tu dat (bien moi truong tren Render, KHONG duoc hardcode trong repo) - neu chua co, ham
+# duoi day tu dong fallback ve _truncate_quote(), khong bao gio lam sap /csat/summary chi vi thieu
+# key hoac goi API loi (mang cham/timeout/rate limit...) - dung tinh than "khong nuot loi im lang"
+# nhung van BAO VE endpoint chinh, giong _client()/StorageError o tren.
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY") or ""
+_AI_SUMMARY_MODEL = "claude-haiku-4-5-20251001"  # model nhanh + re, chi de tom tat 1 cau ngan
+_ai_summary_cache = {}  # van ban goc (da strip) -> ban tom tat - CHI trong bo nho tien trinh nay,
+                        # mat khi restart server (Render free tier con "ngu" sau 15 phut khong dung
+                        # roi thuc day lai) - chap nhan duoc, day chi la toi uu tranh goi lai API
+                        # cho DUNG 1 cau gop y o nhung lan /csat/summary ke tiep.
+
+
+def _summarize_with_ai(text):
+    """Goi THAT Claude API (model Haiku, nhanh+re) de tom tat 1 cau gop y dai cua khach thanh 1 cum
+    tu ngan gon - thay cho _truncate_quote() (chi cat bot ky tu, khong hieu noi dung). LUON fallback
+    ve _truncate_quote() neu: chua cau hinh ANTHROPIC_API_KEY, goi API loi (mang/timeout/rate
+    limit...), hoac tra ve rong. Cache theo dung van ban goc de KHONG goi lai API cho cung 1 cau
+    gop y."""
+    text = (text or "").strip()
+    if not text:
+        return text
+    if text in _ai_summary_cache:
+        return _ai_summary_cache[text]
+    fallback = _truncate_quote(text)
+    if not ANTHROPIC_API_KEY:
+        _ai_summary_cache[text] = fallback
+        return fallback
+    try:
+        r = httpx.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": _AI_SUMMARY_MODEL,
+                "max_tokens": 40,
+                "messages": [{
+                    "role": "user",
+                    "content": (
+                        "Tóm tắt góp ý sau của khách hàng thành ĐÚNG 1 cụm từ ngắn gọn (tối đa 8 "
+                        "từ), giữ nguyên tiếng Việt, không thêm ý kiến/đánh giá gì khác, không dùng "
+                        "dấu ngoặc kép, chỉ trả về đúng cụm từ tóm tắt, không giải thích thêm:\n\n" + text
+                    ),
+                }],
+            },
+            timeout=8.0,
+        )
+        r.raise_for_status()
+        summarized = r.json()["content"][0]["text"].strip()
+        result = summarized or fallback
+    except Exception:
+        result = fallback
+    _ai_summary_cache[text] = result
+    return result
 
 
 def _generate_insights(criteria_ranking, top_issues, avg_overall, total_completed):
@@ -530,14 +590,14 @@ def _generate_insights(criteria_ranking, top_issues, avg_overall, total_complete
     worst_candidates = [c for c in criteria_ranking if c["avg"] is not None and c["avg"] < 4][:2]
     for c in worst_candidates:
         severity = "high" if c["avg"] < 3 else "medium"
-        # CHI lay 1 gop y tieu bieu nhat (truoc lay 2) + RUT GON (truoc trich nguyen van) - "AI
-        # Insight" la 1 nhan dinh CO DONG, khong phai noi lai het du lieu tho (xem _truncate_quote()).
+        # CHI lay 1 gop y tieu bieu nhat (truoc lay 2) + TOM TAT THAT bang AI (xem _summarize_with_ai())
+        # - "AI Insight" la 1 nhan dinh CO DONG, khong phai noi lai het du lieu tho.
         related = [i for i in top_issues if i["criterion_key"] == c["key"]][:1]
         evidence = [f"TB {c['avg']:.1f}/5" + (" — thấp nhất" if c["rank"] == 1 else "")]
         if c["count_low"]:
             evidence.append(f"{c['count_low']} phản hồi ≤3 sao")
         if related:
-            evidence.append(f"góp ý: \"{_truncate_quote(related[0]['text'])}\"")
+            evidence.append(f"góp ý: \"{_summarize_with_ai(related[0]['text'])}\"")
         insights.append({
             "severity": severity, "criterion_key": c["key"], "criterion_label": c["label"],
             "title": f"{c['label']} đang là điểm yếu nhất" if c["rank"] == 1 else f"{c['label']} cũng cần lưu ý",
@@ -561,7 +621,7 @@ def _generate_insights(criteria_ranking, top_issues, avg_overall, total_complete
         related = [i for i in top_issues if i["criterion_key"] == c["key"]][:1]
         evidence = [f"TB {c['avg']:.1f}/5 (vẫn ổn)", f"{c['count_low']} phản hồi ≤3 sao"]
         if related:
-            evidence.append(f"góp ý: \"{_truncate_quote(related[0]['text'])}\"")
+            evidence.append(f"góp ý: \"{_summarize_with_ai(related[0]['text'])}\"")
         insights.append({
             "severity": "medium", "criterion_key": c["key"], "criterion_label": c["label"],
             "title": f"{c['label']} có một nhóm đánh giá thấp đáng chú ý",
