@@ -451,7 +451,17 @@ def summary(start=None, end=None):
                 "text": row["text"], "count": row["count"],
                 "avg_score": row["avg_score"], "last_seen": row["last_seen"],
             })
-    top_issues.sort(key=lambda x: (x["count"], x["last_seen"] or ""), reverse=True)
+    # Uu tien TIEU CHI bi phan anh nhieu nhat len truoc (2026-09-01, yeu cau nguoi dung "tieu chi
+    # nao bi phan anh nhieu nhat uu tien hien thi truoc") - truoc day chi sap theo count/last_seen
+    # cua TUNG dong ly do rieng le, nen 1 tieu chi co 3 dong (moi dong 1 khach viet khac nhau, count
+    # deu =1) bi xep lan lon voi tieu chi chi co 1 dong, khong phan anh dung "tieu chi nao dang bi
+    # nhac toi nhieu nhat noi chung". Tinh TONG so luot phan anh (tong count) cho tung tieu chi lam
+    # khoa sap xep CHINH truoc - gom het cac dong CUNG 1 tieu chi bi phan anh nhieu nhat len dau,
+    # dung count/last_seen cua tung dong lam khoa phu de sap xep trong noi bo 1 tieu chi.
+    criterion_total_mentions = {}
+    for row in top_issues:
+        criterion_total_mentions[row["criterion_key"]] = criterion_total_mentions.get(row["criterion_key"], 0) + row["count"]
+    top_issues.sort(key=lambda x: (criterion_total_mentions[x["criterion_key"]], x["count"], x["last_seen"] or ""), reverse=True)
     top_issues = top_issues[:10]
 
     ai_insights = _generate_insights(criteria_ranking, top_issues, avg_overall, total_completed)
