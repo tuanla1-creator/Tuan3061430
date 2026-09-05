@@ -392,13 +392,23 @@ def summary(start=None, end=None):
             norm = " ".join(raw.strip().lower().split())
             if not norm:
                 continue
-            b = buckets.setdefault(norm, {"text": raw.strip(), "count": 0, "last_seen": None, "score_sum": 0})
+            b = buckets.setdefault(norm, {"text": raw.strip(), "count": 0, "last_seen": None, "score_sum": 0, "codes": []})
             b["count"] += 1
             b["score_sum"] += (r.get("scores") or {}).get(key, 0)
             if not b["last_seen"] or r["submitted_at"] > b["last_seen"]:
                 b["last_seen"] = r["submitted_at"]
+            # THEM 2026-09-05: ma phieu (vd KS000123) cua TUNG khach gop vao chuoi ly do nay - 1
+            # bucket co the gom NHIEU khach neu ho viet dung 1 cau y het nhau (hiem nhung co the
+            # xay ra), nen day la 1 DANH SACH ma phieu chu khong phai 1 ma duy nhat - giu dung
+            # thuc te du lieu, khong bia ra 1 ma dai dien khong that su gan voi tat ca cac khach do.
+            code = format_survey_code(r.get("seq_no"))
+            if code:
+                b["codes"].append(code)
         crit_rows = [
-            {"text": b["text"], "count": b["count"], "last_seen": b["last_seen"], "avg_score": round(b["score_sum"] / b["count"], 2)}
+            {
+                "text": b["text"], "count": b["count"], "last_seen": b["last_seen"],
+                "avg_score": round(b["score_sum"] / b["count"], 2), "survey_codes": b["codes"],
+            }
             for b in buckets.values()
         ]
         # count giam dan (ly do lap lai nhieu nhat len dau); cung count thi last_seen giam dan (moi nhat truoc).
@@ -470,6 +480,7 @@ def summary(start=None, end=None):
                 "criterion_key": c["key"], "criterion_label": c["label"],
                 "text": row["text"], "count": row["count"],
                 "avg_score": row["avg_score"], "last_seen": row["last_seen"],
+                "survey_codes": row.get("survey_codes") or [],
             })
     # Uu tien TIEU CHI bi phan anh nhieu nhat len truoc (2026-09-01, yeu cau nguoi dung "tieu chi
     # nao bi phan anh nhieu nhat uu tien hien thi truoc") - truoc day chi sap theo count/last_seen
