@@ -448,6 +448,12 @@ def summary(start=None, end=None):
                 "score": sc,
                 "reason": (r.get("reasons") or {}).get(key),
                 "comment": r.get("comment"),
+                # THEM 2026-09-05: "ma phieu" (vd KS000123) de agent doi chieu dung phieu nao la
+                # phieu nao khi xem popup "Xem chi tiet" - r["seq_no"] co san o MOI ban ghi (ca
+                # phieu cu, tu backfill luc ALTER TABLE them cot - xem README.md), None neu
+                # Supabase chua chay migration thi format_survey_code() tu tra ve None, frontend
+                # tu an di thay vi hien "None".
+                "survey_code": format_survey_code(r.get("seq_no")),
             })
         rows.sort(key=lambda x: x["submitted_at"] or "", reverse=True)
         low_score_by_criterion[key] = rows[:20]
